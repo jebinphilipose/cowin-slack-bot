@@ -13,7 +13,7 @@ browser_header = {'User-Agent': temp_user_agent.random}
 r = redis_connect()
 
 
-def get_state_id(state_name):
+def get_state_id_from_api(state_name):
     state_name = state_name.title()
     state_id = None
     url = 'https://cdn-api.co-vin.in/api/v2/admin/location/states'
@@ -26,7 +26,7 @@ def get_state_id(state_name):
     return state_id
 
 
-def get_district_id(state_id, district_name):
+def get_district_id_from_api(state_id, district_name):
     district_name = district_name.title()
     district_id = None
     url = f'https://cdn-api.co-vin.in/api/v2/admin/location/districts/{state_id}'
@@ -36,6 +36,49 @@ def get_district_id(state_id, district_name):
         for district in districts:
             if district['district_name'] == district_name:
                 district_id = district['district_id']
+    return district_id
+
+
+def get_district_id_from_cache(state_name, district_name):
+    key = state_name.replace(" ", "_") + "_" + district_name.replace(" ", "_")
+    district_id = r.get(key)
+    if district_id is not None:
+        district_id = int(district_id)
+    return district_id
+
+
+def get_state_id_from_cache(state_name):
+    state_id = r.get(state_name)
+    if state_id is not None:
+        state_id = int(state_id)
+    return state_id
+
+
+def set_district_id_in_cache(state_name, district_name, district_id):
+    key = state_name.replace(" ", "_") + "_" + district_name.replace(" ", "_")
+    return r.setex(key, timedelta(hours=24), district_id)
+
+
+def set_state_id_in_cache(state_name, state_id):
+    return r.setex(state_name, timedelta(hours=24), state_id)
+
+
+def get_state_id(state_name):
+    state_id = get_state_id_from_cache(state_name)
+    if state_id is None:
+        state_id = get_state_id_from_api(state_name)
+        set_state_id_in_cache(state_name, state_id)
+        print(f'Setting state_id for {state_name} in redis cache')
+    return state_id
+
+
+def get_district_id(state_name, district_name):
+    district_id = get_district_id_from_cache(state_name, district_name)
+    if district_id is None:
+        state_id = get_state_id(state_name)
+        district_id = get_district_id_from_api(state_id, district_name)
+        set_district_id_in_cache(state_name, district_name, district_id)
+        print(f'Setting district_id for {district_name} in redis cache')
     return district_id
 
 
@@ -49,30 +92,6 @@ def get_users():
     return users
 
 
-def get_district_id_from_cache(state_name, district_name):
-    key = state_name.replace(" ", "_") + "_" + district_name.replace(" ", "_")
-    district_id = r.get(key)
-    if district_id is not None:
-        district_id = int(district_id)
-    return district_id
-
-
-def set_district_id_in_cache(state_name, district_name, district_id):
-    key = state_name.replace(" ", "_") + "_" + district_name.replace(" ", "_")
-    return r.setex(key, timedelta(hours=24), district_id)
-
-
-def get_state_id_from_cache(state_name):
-    state_id = r.get(state_name)
-    if state_id is not None:
-        state_id = int(state_id)
-    return state_id
-
-
-def set_state_id_in_cache(state_name, state_id):
-    return r.setex(state_name, timedelta(hours=24), state_id)
-
-
 def get_unique_pincodes_and_districts():
     location_map = {
         'pincodes': [],
@@ -83,16 +102,7 @@ def get_unique_pincodes_and_districts():
         if user['pincode'] is not None and user['pincode'] not in location_map['pincodes']:
             location_map['pincodes'].append(user['pincode'])
         elif user['state_name'] is not None and user['district_name'] is not None:
-            state_id = get_state_id_from_cache(user['state_name'])
-            if state_id is None:
-                state_id = get_state_id(user['state_name'])
-                set_state_id_in_cache(user['state_name'], state_id)
-                print(f'Setting state_id for {user["state_name"]} in redis cache')
-            district_id = get_district_id_from_cache(user['state_name'], user['district_name'])
-            if district_id is None:
-                district_id = get_district_id(state_id, user['district_name'])
-                set_district_id_in_cache(user['state_name'], user['district_name'], district_id)
-                print(f'Setting district_id for {user["district_name"]} in redis cache')
+            district_id = get_district_id(user['state_name'], user['district_name'])
             if district_id not in location_map['district_ids']:
                 location_map['district_ids'].append(district_id)
     return location_map

@@ -2,6 +2,8 @@ import requests
 import json
 import pytz
 import os
+import time
+import schedule
 from datetime import datetime, timedelta
 from fake_useragent import UserAgent
 from redis_client import redis_connect
@@ -184,3 +186,10 @@ def send_slack_notification_to_users():
             print(response.text)
     except Exception as e:
         print('ERROR: ' + str(e))
+
+
+if __name__ == "__main__":
+    schedule.every(30).seconds.do(send_slack_notification_to_users)
+    while True:
+        schedule.run_pending()
+        time.sleep(1)

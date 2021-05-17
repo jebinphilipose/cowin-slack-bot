@@ -1,6 +1,7 @@
 import requests
 import json
 import pytz
+import os
 from datetime import datetime, timedelta
 from fake_useragent import UserAgent
 from redis_client import redis_connect
@@ -127,21 +128,59 @@ def fetch_available_vaccine_slots(url, sessions_map, location_key):
 
 
 def get_available_vaccine_slots():
+    IST = pytz.timezone('Asia/Kolkata')
+    dates = [get_date_string(datetime.now(IST)),
+                get_date_string(datetime.now(IST) + timedelta(days=7)),
+                get_date_string(datetime.now(IST) + timedelta(days=14))]
+    locations_map = get_unique_pincodes_and_districts()
+    sessions_map = {}
+    for pincode in locations_map['pincodes']:
+        for date in dates:
+            url = f'https://cdn-api.co-vin.in/api/v2/appointment/sessions/public/calendarByPin?pincode={pincode}&date={date}'
+            fetch_available_vaccine_slots(url, sessions_map, pincode)
+    for district_id in locations_map['district_ids']:
+        for date in dates:
+            url = f'https://cdn-api.co-vin.in/api/v2/appointment/sessions/public/calendarByDistrict?district_id={district_id}&date={date}'
+            fetch_available_vaccine_slots(url, sessions_map, district_id)
+    return sessions_map
+
+
+def generate_user_notification_message(user, sessions_map):
+    message = ''
+    for dosage in user['dosage']:
+        str_list = []
+        for vaccine in user['vaccine']:        
+            if user['pincode'] is not None:
+                location_centers = sessions_map[user['pincode']]
+            elif user['state_name'] is not None and user['district_name'] is not None:
+                district_id = get_district_id(user['state_name'], user['district_name'])
+                location_centers = sessions_map[district_id]
+            for center in location_centers.values():
+                for session in center['sessions']:
+                    if session['min_age_limit'] == dosage['age'] and session['vaccine'] == vaccine:
+                        if dosage['dose_type'] == 'dose1' and session['available_capacity_dose1'] > 0:
+                            str_list.append(f'{session["available_capacity_dose1"]} slots of {vaccine} (DOSE 1) available at {center["name"]} for age group {dosage["age"]}+')
+                        elif dosage['dose_type'] == 'dose2' and session['available_capacity_dose2'] > 0:
+                            str_list.append(f'{session["available_capacity_dose2"]} slots of {vaccine} (DOSE 2) available at {center["name"]} for age group {dosage["age"]}+')
+        str_list = sorted(str_list, key=lambda x: int(x.split()[0]), reverse=True)
+        message = message + "\n".join(str_list) + "\n\n"
+    return message.strip()
+
+
+def send_slack_notification_to_users():
     try:
-        IST = pytz.timezone('Asia/Kolkata')
-        dates = [get_date_string(datetime.now(IST)),
-                 get_date_string(datetime.now(IST) + timedelta(days=7)),
-                 get_date_string(datetime.now(IST) + timedelta(days=14))]
-        locations_map = get_unique_pincodes_and_districts()
-        sessions_map = {}
-        for pincode in locations_map['pincodes']:
-            for date in dates:
-                url = f'https://cdn-api.co-vin.in/api/v2/appointment/sessions/public/calendarByPin?pincode={pincode}&date={date}'
-                fetch_available_vaccine_slots(url, sessions_map, pincode)
-        for district_id in locations_map['district_ids']:
-            for date in dates:
-                url = f'https://cdn-api.co-vin.in/api/v2/appointment/sessions/public/calendarByDistrict?district_id={district_id}&date={date}'
-                fetch_available_vaccine_slots(url, sessions_map, district_id)
-        return sessions_map
+        sessions_map = get_available_vaccine_slots()
+        users = get_users()
+        for user in users:
+            messsage = generate_user_notification_message(user, sessions_map)
+            auth_token = os.getenv("SLACK_BOT_TOKEN")
+            headers = {'Authorization': 'Bearer ' + auth_token}
+            data = {
+                'channel': user['slack_id'],
+                'text': messsage
+            }
+            url = 'https://slack.com/api/chat.postMessage'
+            response = requests.post(url, data=data, headers=headers)
+            print(response.text)
     except Exception as e:
         print('ERROR: ' + str(e))

@@ -4,6 +4,7 @@ import pytz
 import os
 import time
 import schedule
+import logging
 from datetime import datetime, timedelta
 from fake_useragent import UserAgent
 from redis_client import redis_connect
@@ -14,6 +15,11 @@ browser_header = {'User-Agent': temp_user_agent.random}
 
 # Get redis client
 r = redis_connect()
+
+# Setup logging
+logging.basicConfig(format='%(asctime)s %(levelname)s - %(message)s\n',
+                    level=logging.INFO,
+                    datefmt='%Y-%m-%d %H:%M:%S')
 
 
 def get_state_id_from_api(state_name):
@@ -71,7 +77,7 @@ def get_state_id(state_name):
     if state_id is None:
         state_id = get_state_id_from_api(state_name)
         set_state_id_in_cache(state_name, state_id)
-        print(f'Setting state_id for {state_name} in redis cache')
+        logging.info(f'Setting state_id ({state_id}) for {state_name} in redis cache')
     return state_id
 
 
@@ -81,7 +87,7 @@ def get_district_id(state_name, district_name):
         state_id = get_state_id(state_name)
         district_id = get_district_id_from_api(state_id, district_name)
         set_district_id_in_cache(state_name, district_name, district_id)
-        print(f'Setting district_id for {district_name} in redis cache')
+        logging.info(f'Setting district_id ({district_id}) for {district_name}, {state_name} in redis cache')
     return district_id
 
 
@@ -132,8 +138,8 @@ def fetch_available_vaccine_slots(url, sessions_map, location_key):
 def get_available_vaccine_slots():
     IST = pytz.timezone('Asia/Kolkata')
     dates = [get_date_string(datetime.now(IST)),
-                get_date_string(datetime.now(IST) + timedelta(days=7)),
-                get_date_string(datetime.now(IST) + timedelta(days=14))]
+             get_date_string(datetime.now(IST) + timedelta(days=7)),
+             get_date_string(datetime.now(IST) + timedelta(days=14))]
     locations_map = get_unique_pincodes_and_districts()
     sessions_map = {}
     for pincode in locations_map['pincodes']:
@@ -183,13 +189,16 @@ def send_slack_notification_to_users():
             }
             url = 'https://slack.com/api/chat.postMessage'
             response = requests.post(url, data=data, headers=headers)
-            print(response.text)
+            if json.loads(response.text)['ok']:
+                logging.info(f'Notification sent to {user["name"]}')
+            elif json.loads(response.text)['error'] == 'no_text':
+                logging.info(f'No vaccines available for {user["name"]}')
     except Exception as e:
-        print('ERROR: ' + str(e))
+        logging.error(str(e))
 
 
 if __name__ == "__main__":
-    schedule.every(30).seconds.do(send_slack_notification_to_users)
+    schedule.every(60).seconds.do(send_slack_notification_to_users)
     while True:
         schedule.run_pending()
         time.sleep(1)

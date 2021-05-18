@@ -1,26 +1,20 @@
 import requests
 import json
-import pytz
 import os
-import time
-import schedule
-import logging
 from datetime import datetime, timedelta
-from fake_useragent import UserAgent
 from redis_client import redis_connect
 
 # Set request headers
-temp_user_agent = UserAgent()
-browser_header = {'User-Agent': temp_user_agent.random,
+browser_header = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.93 Safari/537.36 Edg/90.0.818.51',
                   'Accept-Language': 'en_IN'}
 
 # Get redis client
 r = redis_connect()
 
-# Setup logging
-logging.basicConfig(format='%(asctime)s %(levelname)s - %(message)s\n',
-                    level=logging.INFO,
-                    datefmt='%Y-%m-%d %H:%M:%S')
+# Setup logger
+def logger(level, message):
+    now = datetime.now()
+    print(now.strftime('%Y-%m-%d %H:%M:%S') + ' ' + level + ' - ' + message)
 
 
 def get_state_id_from_api(state_name):
@@ -82,7 +76,7 @@ def get_state_id(state_name):
     if state_id is None:
         state_id = get_state_id_from_api(state_name)
         set_state_id_in_cache(state_name, state_id)
-        logging.info(f'Setting state_id ({state_id}) for {state_name} in redis cache')
+        logger('INFO', f'Setting state_id ({state_id}) for {state_name} in redis cache')
     return state_id
 
 
@@ -92,7 +86,7 @@ def get_district_id(state_name, district_name):
         state_id = get_state_id(state_name)
         district_id = get_district_id_from_api(state_id, district_name)
         set_district_id_in_cache(state_name, district_name, district_id)
-        logging.info(f'Setting district_id ({district_id}) for {district_name}, {state_name} in redis cache')
+        logger('INFO', f'Setting district_id ({district_id}) for {district_name}, {state_name} in redis cache')
     return district_id
 
 
@@ -143,10 +137,9 @@ def fetch_available_vaccine_slots(url, sessions_map, location_key):
 
 
 def get_available_vaccine_slots():
-    IST = pytz.timezone('Asia/Kolkata')
-    dates = [get_date_string(datetime.now(IST)),
-             get_date_string(datetime.now(IST) + timedelta(days=7)),
-             get_date_string(datetime.now(IST) + timedelta(days=14))]
+    dates = [get_date_string(datetime.now()),
+             get_date_string(datetime.now() + timedelta(days=7)),
+             get_date_string(datetime.now() + timedelta(days=14))]
     locations_map = get_unique_pincodes_and_districts()
     sessions_map = {}
     for pincode in locations_map['pincodes']:
@@ -182,7 +175,7 @@ def generate_user_notification_message(user, sessions_map):
     return message.strip()
 
 
-def send_slack_notification_to_users():
+def send_slack_notification_to_users(event=None, context=None):
     try:
         sessions_map = get_available_vaccine_slots()
         users = get_users()
@@ -197,15 +190,8 @@ def send_slack_notification_to_users():
             url = 'https://slack.com/api/chat.postMessage'
             response = requests.post(url, data=data, headers=headers)
             if json.loads(response.text)['ok']:
-                logging.info(f'Notification sent to {user["name"]}')
+                logger('INFO', f'Notification sent to {user["name"]}')
             elif json.loads(response.text)['error'] == 'no_text':
-                logging.info(f'No vaccines available for {user["name"]}')
+                logger('INFO', f'No vaccines available for {user["name"]}')
     except Exception as e:
-        logging.error(str(e))
-
-
-if __name__ == "__main__":
-    schedule.every(60).seconds.do(send_slack_notification_to_users)
-    while True:
-        schedule.run_pending()
-        time.sleep(1)
+        logger('ERROR', str(e))

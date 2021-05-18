@@ -9,9 +9,10 @@ from datetime import datetime, timedelta
 from fake_useragent import UserAgent
 from redis_client import redis_connect
 
-# Set user agent
+# Set request headers
 temp_user_agent = UserAgent()
-browser_header = {'User-Agent': temp_user_agent.random}
+browser_header = {'User-Agent': temp_user_agent.random,
+                  'Accept-Language': 'en_IN'}
 
 # Get redis client
 r = redis_connect()
@@ -27,6 +28,8 @@ def get_state_id_from_api(state_name):
     state_id = None
     url = 'https://cdn-api.co-vin.in/api/v2/admin/location/states'
     response = requests.get(url, headers=browser_header)
+    if '403 ERROR' in response.text:
+        raise Exception('Request blocked (403 ERROR)')
     if response.ok and ('states' in response.text):
         states = json.loads(response.text)['states']
         for state in states:
@@ -40,6 +43,8 @@ def get_district_id_from_api(state_id, district_name):
     district_id = None
     url = f'https://cdn-api.co-vin.in/api/v2/admin/location/districts/{state_id}'
     response = requests.get(url, headers=browser_header)
+    if '403 ERROR' in response.text:
+        raise Exception('Request blocked (403 ERROR)')
     if response.ok and ('districts' in response.text):
         districts = json.loads(response.text)['districts']
         for district in districts:
@@ -119,6 +124,8 @@ def get_unique_pincodes_and_districts():
 
 def fetch_available_vaccine_slots(url, sessions_map, location_key):
     response = requests.get(url, headers=browser_header)
+    if '403 ERROR' in response.text:
+        raise Exception('Request blocked (403 ERROR)')
     if response.ok and 'centers' in response.text:
         centers = json.loads(response.text)['centers']
         for center in centers:

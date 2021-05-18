@@ -167,9 +167,9 @@ def generate_user_notification_message(user, sessions_map):
                 for session in center['sessions']:
                     if session['min_age_limit'] == dosage['age'] and session['vaccine'] == vaccine:
                         if dosage['dose_type'] == 'dose1' and session['available_capacity_dose1'] > 0:
-                            str_list.append(f'{session["available_capacity_dose1"]} slots of {vaccine} (DOSE 1) available at {center["name"]} for age group {dosage["age"]}+')
+                            str_list.append(f'{session["available_capacity_dose1"]} slots of {vaccine} (DOSE 1) available at {center["name"]} for age group {dosage["age"]}+ on {session["date"]}')
                         elif dosage['dose_type'] == 'dose2' and session['available_capacity_dose2'] > 0:
-                            str_list.append(f'{session["available_capacity_dose2"]} slots of {vaccine} (DOSE 2) available at {center["name"]} for age group {dosage["age"]}+')
+                            str_list.append(f'{session["available_capacity_dose2"]} slots of {vaccine} (DOSE 2) available at {center["name"]} for age group {dosage["age"]}+ on {session["date"]}')
         str_list = sorted(str_list, key=lambda x: int(x.split()[0]), reverse=True)
         message = message + "\n".join(str_list) + "\n\n"
     return message.strip()

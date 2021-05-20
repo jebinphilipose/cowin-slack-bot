@@ -18,7 +18,6 @@ def logger(level, message):
 
 
 def get_state_id_from_api(state_name):
-    state_name = state_name.title()
     state_id = None
     url = 'https://cdn-api.co-vin.in/api/v2/admin/location/states'
     response = requests.get(url, headers=browser_header)
@@ -33,7 +32,6 @@ def get_state_id_from_api(state_name):
 
 
 def get_district_id_from_api(state_id, district_name):
-    district_name = district_name.title()
     district_id = None
     url = f'https://cdn-api.co-vin.in/api/v2/admin/location/districts/{state_id}'
     response = requests.get(url, headers=browser_header)
@@ -75,8 +73,11 @@ def get_state_id(state_name):
     state_id = get_state_id_from_cache(state_name)
     if state_id is None:
         state_id = get_state_id_from_api(state_name)
-        set_state_id_in_cache(state_name, state_id)
-        logger('INFO', f'Setting state_id ({state_id}) for {state_name} in redis cache')
+        if state_id is not None:
+            set_state_id_in_cache(state_name, state_id)
+            logger('INFO', f'Setting state_id ({state_id}) for {state_name} in redis cache')
+        else:
+            logger('ERROR', f'State not found - {state_name}')
     return state_id
 
 
@@ -85,8 +86,11 @@ def get_district_id(state_name, district_name):
     if district_id is None:
         state_id = get_state_id(state_name)
         district_id = get_district_id_from_api(state_id, district_name)
-        set_district_id_in_cache(state_name, district_name, district_id)
-        logger('INFO', f'Setting district_id ({district_id}) for {district_name}, {state_name} in redis cache')
+        if district_id is not None:
+            set_district_id_in_cache(state_name, district_name, district_id)
+            logger('INFO', f'Setting district_id ({district_id}) for {district_name}, {state_name} in redis cache')
+        else:
+            logger('ERROR', f'District not found - {district_name} ({state_name})')
     return district_id
 
 
@@ -162,6 +166,8 @@ def generate_user_notification_message(user, sessions_map):
                 location_centers = sessions_map[user['pincode']]
             elif user['state_name'] is not None and user['district_name'] is not None:
                 district_id = get_district_id(user['state_name'], user['district_name'])
+                if district_id is None:
+                    return ''
                 location_centers = sessions_map[district_id]
             for center in location_centers.values():
                 for session in center['sessions']:

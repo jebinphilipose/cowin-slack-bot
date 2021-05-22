@@ -126,9 +126,9 @@ def fetch_available_vaccine_slots(url, sessions_map, location_key):
         raise Exception('Request blocked (403 ERROR)')
     if response.ok and 'centers' in response.text:
         centers = json.loads(response.text)['centers']
+        if location_key not in sessions_map:
+            sessions_map[location_key] = {}
         for center in centers:
-            if location_key not in sessions_map:
-                sessions_map[location_key] = {}
             if center['center_id'] not in sessions_map[location_key]:
                 sessions_map[location_key][center['center_id']] = {}
                 sessions_map[location_key][center['center_id']]['name'] = center['name']

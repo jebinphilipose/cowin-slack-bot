@@ -141,9 +141,7 @@ def fetch_available_vaccine_slots(url, sessions_map, location_key):
 
 
 def get_available_vaccine_slots():
-    dates = [get_date_string(datetime.now()),
-             get_date_string(datetime.now() + timedelta(days=7)),
-             get_date_string(datetime.now() + timedelta(days=14))]
+    dates = [get_date_string(datetime.now())]
     locations_map = get_unique_pincodes_and_districts()
     sessions_map = {}
     for pincode in locations_map['pincodes']:
